@@ -136,19 +136,16 @@ def load_x_data_for_HAN(patient_name, keep_prob, input_x, sentence_lengths, word
                             parameters.max_document_length,
                             parameters.max_sentence_length], dtype=np.float32)
     sent_l = []
-    #tmp_cate = []
     word_l = []
 
     for (M, r) in enumerate(generate_token_embedding_results):
 
         tmp_x[M] = r[0]
         sent_l.append(r[1])
-        #tmp_cate.append(r[2])
-        word_l.append(r[3])
+        word_l.append(r[2])
 
    
     sent_l = np.asarray(sent_l)
-    #cate_id = np.stack(tmp_cate)
     word_l = np.stack(word_l)
     feed_dict = {input_x: tmp_x,
                  sentence_lengths: sent_l,
