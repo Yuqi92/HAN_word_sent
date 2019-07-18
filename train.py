@@ -7,7 +7,7 @@ from tqdm import tqdm
 from Embedding import Embedding
 import tensorflow as tf
 from utility import split_train_test_dev, assign_patient_subject_id,\
-generate_task_label, test_dev_auc, simple_model, load_x_data_for_simple, \
+generate_task_label, test_dev_auc, load_x_data_for_simple, \
 load_x_data_for_HAN, HAN_model
 
 
@@ -15,11 +15,9 @@ logging.basicConfig(filename=parameters.log_file_name, level=logging.INFO, forma
 
 result_csv = pd.read_csv(parameters.label_csv)
 
-logging.info('split_train_test_dev')
-
 train_index, test_index, dev_index = split_train_test_dev(len(result_csv))
 
-label = 'ICD9_CODE'
+label = 'dead_after_disch_date'
 train_label = result_csv[label].iloc[train_index]
 test_label = result_csv[label].iloc[test_index]
 dev_label = result_csv[label].iloc[dev_index]
@@ -61,15 +59,15 @@ if parameters.model_type == "HAN":
         Embedding().get_embedding_numpy()
     )
 
-
-elif parameters.model_type == "Perceptron":
-    input_x = tf.placeholder(tf.float32,
-                         [None, parameters.sentence_output_size],
-                         name="input_x")
-    dropout_keep_prob = None
-    word_lengths = None
-    sentence_lengths = None
-    optimize, scores_soft_max_list = simple_model(input_x, input_ys)
+#
+# elif parameters.model_type == "Perceptron":
+#     input_x = tf.placeholder(tf.float32,
+#                          [None, parameters.sentence_output_size],
+#                          name="input_x")
+#     dropout_keep_prob = None
+#     word_lengths = None
+#     sentence_lengths = None
+#     optimize, scores_soft_max_list = simple_model(input_x, input_ys)
 
 else:
     logging.error("unsupport model type")
@@ -77,6 +75,7 @@ else:
     scores_soft_max_list = None
 
 
+np.random.seed(20)
 saver = tf.train.Saver()
 
 with tf.Session() as sess:
@@ -106,8 +105,8 @@ with tf.Session() as sess:
                 feed_dict = load_x_data_for_HAN(tmp_train_patient_name, parameters.drop_out_train, input_x, 
                     sentence_lengths, word_lengths, dropout_keep_prob,
                                                 is_training, True)
-            elif parameters.model_type == "Perceptron":
-                feed_dict = load_x_data_for_simple(tmp_train_patient_name, input_x)
+            # elif parameters.model_type == "Perceptron":
+            #     feed_dict = load_x_data_for_simple(tmp_train_patient_name, input_x)
             else:
                 logging.error("unsupported model type")
                 feed_dict = None
@@ -136,7 +135,8 @@ with tf.Session() as sess:
             break
 
     test_auc,test_auc_per_task = test_dev_auc(num_test_batch, y_test_task, test_patient_name, n_test, sess,
-                            input_x, sentence_lengths, word_lengths, dropout_keep_prob, scores_soft_max_list, test_output_flag=True)
+                            input_x, sentence_lengths, word_lengths, dropout_keep_prob, scores_soft_max_list,
+                                              test_output_flag=True, is_training_ph=is_training, is_training_value=False)
     logging.info("Test total AUC: {}".format(test_auc))
-    logging.info("Multi-task list: " + str(parameters.multi_task_list))
+    logging.info("Multi-task list: " + str(parameters.tasks_dead_date))
     logging.info("Test total AUC: {}".format(test_auc_per_task))

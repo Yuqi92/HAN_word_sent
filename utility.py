@@ -61,66 +61,49 @@ def generate_task_label(y_series):
 def assign_patient_subject_id(result_csv,index):
     patient_name = np.asarray(result_csv["SUBJECT_ID"].iloc[index])
     return patient_name
+#
+# pid_subjectid = pd.read_csv('./subject.csv')
+# def _find_pid(sid):
+#     pid = pid_subjectid.loc[pid_subjectid['subject_id'] == sid, 'pid'].iloc[0]
+#     return pid
 
-pid_subjectid = pd.read_csv('./subject.csv')
-def _find_pid(sid):
-    pid = pid_subjectid.loc[pid_subjectid['subject_id'] == sid, 'pid'].iloc[0]
-    return pid
-
-#TODO: word_l: 1d [n_sent]
+#: word_l: 1d [n_sent]
 def generate_token_embedding(subject_id):
-    pid = _find_pid(subject_id)
     x_doc = np.ones([parameters.max_document_length,
                       parameters.max_sentence_length], dtype=np.int32) * Embedding().get_pad_index()
-    current_sentence_ind = 0
-    word_length_per_sent = []
-    if pid is not None:
-        f = open(parameters.note_directory + 'patient'+ str(pid) + '.txt')
-        categories_id_per_file = []
-        waiting_for_new_sentence_flag = True
-        for line in f:
-            strip_line = line.strip()
-            if len(strip_line) == 0:
-                waiting_for_new_sentence_flag = True
-                word_length_per_sent.append(current_word_ind)
-                if current_word_ind > 0:
-                    current_sentence_ind += 1
-                    if current_sentence_ind >= parameters.max_document_length:
-                        break
-                else:
-                    logging.warning("Continues blank line in file: " + pid)
-                # add something to x_token
-                continue
-            if waiting_for_new_sentence_flag:  # is new category line
-                categories_id_per_file.append(int(strip_line))
-                waiting_for_new_sentence_flag = False
-                # x_sentence = np.zeros([HP.n_max_word_num,
-                #                       HP.embedding_size], dtype=np.float32)
-                current_word_ind = 0
-            else:  # is new word line
-                if current_word_ind < parameters.max_sentence_length: # Do not load real embedding, load index 
-                    x_doc[current_sentence_ind][current_word_ind] = Embedding().get_word_index(
-                        word=strip_line, unknown_word="UNK"
-                    )
-                    current_word_ind += 1
-        if not waiting_for_new_sentence_flag:
-            logging.warning("Do not find new line at the bottom of the file: " + str(pid) + ". Which will cause one ignored sent")
-        f.close()
-        number_of_sentences = len(categories_id_per_file)
-        # categories_id_per_file = categories_id_per_file + [0]*(parameters.max_document_length-number_of_sentences)
-        number_of_words = word_length_per_sent + [0]*(parameters.max_document_length-number_of_sentences)
-        return x_doc, number_of_sentences, number_of_words
-    else:
-        logging.info("no existing note for this patient " + str(subject_id))
+    patient_file = parameters.note_directory + str(subject_id) + '.txt'
 
-def load_x_data_for_simple(patient_name, input_x):
-    p_vector_list = []
-    for p in patient_name:
-        p_np = np.load(parameters.patient_vector_directory + str(p) + ".npy")
-        p_vector_list.append(p_np)
-    tmp_x = np.stack(p_vector_list)
-    feed_dict = {input_x: tmp_x}
-    return feed_dict
+    word_length_per_doc = []
+    text = open(patient_file)
+    num_sent_per_doc = 0
+    for current_sent_index, line in enumerate(text):
+        num_sent_per_doc += 1
+        if current_sent_index < parameters.max_document_length:
+            strip_line = line.strip()
+            word_list = strip_line.split()
+            num_word_per_sent = len(word_list)
+            if num_word_per_sent <= parameters.max_sentence_length:
+                word_length_per_doc.append(num_word_per_sent)
+            else:
+                word_length_per_doc.append(parameters.max_sentence_length)
+            for current_word_index, word in enumerate(word_list):
+                    if current_word_index < parameters.max_sentence_length:
+                        x_doc[current_sent_index][current_word_index] = Embedding().get_word_index(word=word, unknown_word="UNK")
+        else:
+            num_sent_per_doc = parameters.max_document_length
+            continue
+    num_word_per_doc = word_length_per_doc + [0] * (parameters.max_document_length - num_sent_per_doc)
+
+    return x_doc, num_sent_per_doc, num_word_per_doc
+#
+# def load_x_data_for_simple(patient_name, input_x):
+#     p_vector_list = []
+#     for p in patient_name:
+#         p_np = np.load(parameters.patient_vector_directory + str(p) + ".npy")
+#         p_vector_list.append(p_np)
+#     tmp_x = np.stack(p_vector_list)
+#     feed_dict = {input_x: tmp_x}
+#     return feed_dict
 
 
 
@@ -144,7 +127,6 @@ def load_x_data_for_HAN(patient_name, keep_prob, input_x, sentence_lengths, word
         sent_l.append(r[1])
         word_l.append(r[2])
 
-   
     sent_l = np.asarray(sent_l)
     word_l = np.stack(word_l)
     feed_dict = {input_x: tmp_x,
@@ -153,39 +135,39 @@ def load_x_data_for_HAN(patient_name, keep_prob, input_x, sentence_lengths, word
                  dropout_keep_prob: keep_prob,
                  is_training_ph: is_training_value}
     return feed_dict
-
-# Perceptron for target task
-def simple_model(input_x, input_ys):
-    # input_x : n_batch * document_filter_size
-    total_loss = 0
-    scores_soft_max_list = []
-    for (M,input_y) in enumerate(input_ys):
-        with tf.name_scope("task"+str(M)):
-
-            W_fully = tf.Variable(tf.truncated_normal([parameters.document_num_filters, parameters.document_num_filters], stddev=0.1), name="W_fully")
-            b_fully = tf.Variable(tf.constant(0.1, shape=[parameters.document_num_filters]), name="b_fully")
-            scores_2 = tf.nn.xw_plus_b(input_x, W_fully, b_fully) # n_batch * document_num_filters
-
-            with tf.name_scope("dropout_second"):
-                scores_drop = tf.nn.dropout(scores_2, 0.8)
-
-            W = tf.Variable(tf.truncated_normal([parameters.document_num_filters, parameters.num_classes], stddev=0.1), name="W")
-            b = tf.Variable(tf.constant(0.1, shape=[parameters.num_classes]), name="b")
-
-            scores = tf.nn.xw_plus_b(scores_drop, W, b)
-            # scores has shape: [n_batch, num_classes]
-            scores_soft_max = tf.nn.softmax(scores)
-            scores_soft_max_list.append(scores_soft_max)   # scores_soft_max_list shape:[multi_size, n_batch, num_classes]
-            # caculate loss
-            losses = tf.nn.softmax_cross_entropy_with_logits(logits=scores, labels=input_y)
-            loss_avg = tf.reduce_mean(losses)
-            total_loss += loss_avg
-
-    optimizer = tf.train.AdamOptimizer(learning_rate=parameters.learning_rate)
-    optimize = optimizer.minimize(total_loss)
-    scores_soft_max_list = tf.stack(scores_soft_max_list, axis=0)
-
-    return optimize, scores_soft_max_list
+#
+# # Perceptron for target task
+# def simple_model(input_x, input_ys):
+#     # input_x : n_batch * document_filter_size
+#     total_loss = 0
+#     scores_soft_max_list = []
+#     for (M,input_y) in enumerate(input_ys):
+#         with tf.name_scope("task"+str(M)):
+#
+#             W_fully = tf.Variable(tf.truncated_normal([parameters.document_num_filters, parameters.document_num_filters], stddev=0.1), name="W_fully")
+#             b_fully = tf.Variable(tf.constant(0.1, shape=[parameters.document_num_filters]), name="b_fully")
+#             scores_2 = tf.nn.xw_plus_b(input_x, W_fully, b_fully) # n_batch * document_num_filters
+#
+#             with tf.name_scope("dropout_second"):
+#                 scores_drop = tf.nn.dropout(scores_2, 0.8)
+#
+#             W = tf.Variable(tf.truncated_normal([parameters.document_num_filters, parameters.num_classes], stddev=0.1), name="W")
+#             b = tf.Variable(tf.constant(0.1, shape=[parameters.num_classes]), name="b")
+#
+#             scores = tf.nn.xw_plus_b(scores_drop, W, b)
+#             # scores has shape: [n_batch, num_classes]
+#             scores_soft_max = tf.nn.softmax(scores)
+#             scores_soft_max_list.append(scores_soft_max)   # scores_soft_max_list shape:[multi_size, n_batch, num_classes]
+#             # caculate loss
+#             losses = tf.nn.softmax_cross_entropy_with_logits(logits=scores, labels=input_y)
+#             loss_avg = tf.reduce_mean(losses)
+#             total_loss += loss_avg
+#
+#     optimizer = tf.train.AdamOptimizer(learning_rate=parameters.learning_rate)
+#     optimize = optimizer.minimize(total_loss)
+#     scores_soft_max_list = tf.stack(scores_soft_max_list, axis=0)
+#
+#     return optimize, scores_soft_max_list
 
 
 
@@ -299,7 +281,6 @@ def test_dev_auc(num_batch, y_task, patient_name, n, sess,
     auc_per_task = {}
 
 
-
     for m in range(parameters.multi_size):
         seperate_pre[m] = []
         y_seperate_task_label[m] = []
@@ -313,8 +294,8 @@ def test_dev_auc(num_batch, y_task, patient_name, n, sess,
         if parameters.model_type == "HAN":
             feed_dict = load_x_data_for_HAN(tmp_patient_name, 1.0, input_x, sent_lengths, word_lengths,
                                             dropout_keep_prob, is_training_ph, is_training_value)
-        elif parameters.model_type == "Perceptron":
-            feed_dict = load_x_data_for_simple(tmp_patient_name, input_x)
+        # elif parameters.model_type == "Perceptron":
+        #     feed_dict = load_x_data_for_simple(tmp_patient_name, input_x)
         else:
             logging.error("not support model type")
             feed_dict = None
