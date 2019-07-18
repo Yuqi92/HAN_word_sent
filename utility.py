@@ -32,29 +32,40 @@ def split_train_test_dev(n_patient):
         test_index = np.load(parameters.index_test_path)
     return train_index, test_index, dev_index
 
-def transfer_string_list_icd9(cell):
-    new_cell_list = []
-    cell_nob = cell[1:-1]
-    cell_list = cell_nob.split(',')
-    for c in cell_list:
-        c = c.strip()
-        c = c[1:-1]
-        new_cell_list.append(c)
-    return new_cell_list
-
-def generate_task_label(y_series):
+def generate_label_from_dead_date(y_series):
     labels = []
-    for task in parameters.multi_task_list:
+    for dead_date in parameters.tasks_dead_date:
         label = []
-        for index,y in y_series.iteritems():
-            y = transfer_string_list_icd9(y)
-            if task in y:
-                label.append([0,1])
+        for index, y in y_series.iteritems():
+            if y < dead_date:
+                label.append([0, 1])
             else:
-                label.append([1,0])
+                label.append([1, 0])
         label = np.asarray(label)
         labels.append(label)
     return labels
+
+def generate_label_from_los_date(y_series):
+    """Generate the classification label"""
+    labels = []
+    for dead_date in parameters.tasks_los_date:
+        label = []
+        for index, y in y_series.iteritems():
+            if y < dead_date:
+                label.append([0, 1])
+            else:
+                label.append([1, 0])
+        label = np.asarray(label)
+        labels.append(label)
+    return labels
+
+def generate_task_label(y_series):
+    if parameters.task == 'dead':
+        return generate_label_from_dead_date(y_series)
+    elif parameters.task == 'LOS':
+        return generate_label_from_los_date(y_series)
+    else:
+        return "!!!No task assigned!!!"
 
 
 

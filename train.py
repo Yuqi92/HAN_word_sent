@@ -7,7 +7,7 @@ from tqdm import tqdm
 from Embedding import Embedding
 import tensorflow as tf
 from utility import split_train_test_dev, assign_patient_subject_id,\
-generate_task_label, test_dev_auc, load_x_data_for_simple, \
+generate_task_label, test_dev_auc, \
 load_x_data_for_HAN, HAN_model
 
 
