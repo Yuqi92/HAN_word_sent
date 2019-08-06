@@ -6,16 +6,16 @@ index_test_path = index_path + 'test.index.npy'
 index_train_path = index_path + 'train.index.npy'
 
 restore = False
-model_path = './results/3_task_dead/'
+model_path = './new_results/uni_task/one_year_640/'
 deep_learning_model = model_path + "model.weights/model.ckpt"
 
-max_document_length = 1000 # how many sentences in document(max): n_sent
+max_document_length = 640 # how many sentences in document(max): n_sent
 max_sentence_length = 25  # how many words in the sentence(max): n_word
 embedding_size = 100
 
 task = 'dead' # option:  dead; LOS; ICD9
 tasks_icd_9 = []
-tasks_dead_date = [0, 31, 366]
+tasks_dead_date = [366]
 tasks_los_date = []
 
 multi_size = len(tasks_dead_date)
@@ -29,7 +29,7 @@ log_file_name = model_path + 'log.log'
 
 
 
-n_batch = 32
+n_batch = 50
 early_stop_times = 5
 num_classes = 2
 model_type = "HAN"
